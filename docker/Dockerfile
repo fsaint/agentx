@@ -3,8 +3,10 @@ FROM ghcr.io/openclaw/openclaw:2026.3.13-1
 # Switch to root to install browser dependencies
 USER root
 
-# Install Chromium via Playwright
-RUN node /app/node_modules/playwright-core/cli.js install --with-deps chromium
+# Install Chromium via Playwright into the node user's cache
+ENV PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright
+RUN node /app/node_modules/playwright-core/cli.js install --with-deps chromium && \
+    chown -R node:node /home/node/.cache
 
 # Install openclaw-mcp-bridge plugin into OpenClaw's plugin directory
 RUN mkdir -p /home/node/.openclaw/plugins/openclaw-mcp-bridge && \
