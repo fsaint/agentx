@@ -1,0 +1,154 @@
+#!/bin/bash
+set -e
+
+CONFIG_DIR="${HOME}/.openclaw"
+WORKSPACE_DIR="${CONFIG_DIR}/workspace"
+
+mkdir -p "$CONFIG_DIR" "$WORKSPACE_DIR" "$CONFIG_DIR/agents/main/sessions"
+chmod 700 "$CONFIG_DIR"
+
+# Copy workspace templates if not already present
+if [ ! -f "$WORKSPACE_DIR/SOUL.md" ]; then
+  cp /workspace-template/* "$WORKSPACE_DIR/" 2>/dev/null || true
+fi
+
+# Override SOUL.md from env var if provided
+if [ -n "$SOUL_MD" ]; then
+  echo "$SOUL_MD" > "$WORKSPACE_DIR/SOUL.md"
+fi
+
+# Generate openclaw.json from environment variables
+node -e "
+const fs = require('fs');
+
+const telegramToken = process.env.TELEGRAM_BOT_TOKEN || '';
+const trustedUser = process.env.TELEGRAM_TRUSTED_USER || '';
+const mcpConfig = JSON.parse(process.env.MCP_CONFIG || '[]');
+const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN || 'agentx-' + Math.random().toString(36).slice(2);
+
+// Build MCP servers object from array
+const mcpServers = {};
+for (const server of mcpConfig) {
+  if (server.name) {
+    if (server.url) {
+      // HTTP/SSE remote MCP server
+      mcpServers[server.name] = {
+        url: server.url,
+        ...(server.transport ? { transport: server.transport } : {}),
+        ...(server.headers ? { headers: server.headers } : {}),
+      };
+    } else {
+      // stdio local MCP server
+      mcpServers[server.name] = {
+        command: server.command || 'npx',
+        args: server.args || [],
+        env: server.env || {},
+      };
+    }
+  }
+}
+
+const config = {
+  gateway: {
+    port: 18789,
+    mode: 'local',
+    auth: { token: gatewayToken },
+    controlUi: {
+      dangerouslyAllowHostHeaderOriginFallback: true,
+    },
+  },
+  agents: {
+    defaults: {
+      workspace: '${WORKSPACE_DIR}',
+      model: {
+        primary: 'anthropic/claude-sonnet-4-5',
+      },
+    },
+  },
+  channels: {
+    telegram: {
+      enabled: !!telegramToken,
+      botToken: telegramToken,
+      dmPolicy: trustedUser ? 'allowlist' : 'open',
+      allowFrom: trustedUser ? [trustedUser] : ['*'],
+      streaming: 'partial',
+    },
+  },
+  browser: {
+    enabled: true,
+    headless: true,
+    defaultProfile: 'default',
+  },
+  // Configure plugins including MCP bridge for HTTP/stdio MCP servers
+  plugins: {
+    enabled: true,
+    allow: ['openclaw-mcp-bridge'],
+    load: {
+      paths: ['${HOME}/.openclaw/plugins/openclaw-mcp-bridge/node_modules/openclaw-mcp-bridge'],
+    },
+    ...(Object.keys(mcpServers).length > 0 ? {
+      entries: {
+        'openclaw-mcp-bridge': {
+          enabled: true,
+          config: {
+            servers: mcpServers,
+          },
+        },
+      },
+    } : {}),
+  },
+};
+
+fs.writeFileSync('${CONFIG_DIR}/openclaw.json', JSON.stringify(config, null, 2));
+console.log('Generated openclaw.json');
+console.log('Telegram:', telegramToken ? 'configured' : 'not set');
+console.log('MCP servers:', Object.keys(mcpServers).length);
+"
+
+# Start usage reporter in background (reports every 5 minutes)
+if [ -n "$USAGE_CALLBACK_URL" ] && [ -n "$INSTANCE_USER_ID" ]; then
+  node -e "
+    const INTERVAL = 5 * 60 * 1000;
+    let lastInputTokens = 0;
+    let lastOutputTokens = 0;
+
+    async function reportUsage() {
+      try {
+        const res = await fetch('http://localhost:18789/healthz');
+        if (!res.ok) return;
+
+        const statsRes = await fetch('http://localhost:18789/api/v1/stats', {
+          headers: { 'Authorization': 'Bearer ' + process.env.OPENCLAW_GATEWAY_TOKEN }
+        });
+        if (!statsRes.ok) return;
+        const stats = await statsRes.json();
+
+        const inputTokens = (stats.totalInputTokens || 0) - lastInputTokens;
+        const outputTokens = (stats.totalOutputTokens || 0) - lastOutputTokens;
+
+        if (inputTokens === 0 && outputTokens === 0) return;
+
+        lastInputTokens = stats.totalInputTokens || 0;
+        lastOutputTokens = stats.totalOutputTokens || 0;
+
+        await fetch(process.env.USAGE_CALLBACK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: process.env.INSTANCE_USER_ID,
+            inputTokens,
+            outputTokens,
+          }),
+        });
+      } catch (err) {
+        console.error('Usage report failed:', err.message);
+      }
+    }
+
+    setInterval(reportUsage, INTERVAL);
+    console.log('Usage reporter started (every 5m)');
+  " &
+fi
+
+# Start the gateway (skip doctor — it OOMs on small VMs)
+exec node /app/openclaw.mjs gateway --bind lan --port 18789

@@ -1,0 +1,104 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id               String    @id @default(cuid())
+  email            String    @unique
+  name             String?
+  image            String?
+  emailVerified    DateTime?
+  stripeCustomerId String?   @unique
+  createdAt        DateTime  @default(now())
+
+  accounts     Account[]
+  sessions     Session[]
+  instances    Instance[]
+  usageRecords UsageRecord[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Instance {
+  id            String   @id @default(cuid())
+  userId        String
+  name          String   @default("My Agent")
+  flyMachineId  String?  @unique
+  flyAppName    String?
+  region        String   @default("iad")
+  status        String   @default("pending")
+  telegramToken  String
+  telegramUserId String?
+  gatewayToken   String?
+  soulMd         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mcpConfigs McpConfig[]
+
+  @@index([userId])
+}
+
+model McpConfig {
+  id         String   @id @default(cuid())
+  instanceId String
+  name       String
+  config     Json
+  createdAt  DateTime @default(now())
+
+  instance Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+}
+
+model UsageRecord {
+  id             String   @id @default(cuid())
+  userId         String
+  periodStart    DateTime
+  periodEnd      DateTime
+  inputTokens    Int      @default(0)
+  outputTokens   Int      @default(0)
+  totalCostCents Int      @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, periodStart])
+}
