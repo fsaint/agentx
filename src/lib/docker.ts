@@ -16,6 +16,9 @@ export async function createLocalContainer(opts: {
   mcpConfigs: object[];
   gatewayToken: string;
   soulMd?: string;
+  modelProvider?: string;
+  modelName?: string;
+  modelCredentials?: string;
 }): Promise<{ containerId: string; containerName: string; port: number }> {
   const containerName = `agentx-${opts.instanceId.slice(0, 12)}`;
 
@@ -43,6 +46,16 @@ export async function createLocalContainer(opts: {
 
   if (opts.telegramUserId) {
     env.TELEGRAM_TRUSTED_USER = opts.telegramUserId;
+  }
+
+  if (opts.modelProvider) {
+    env.MODEL_PROVIDER = opts.modelProvider;
+  }
+  if (opts.modelName) {
+    env.MODEL_NAME = opts.modelName;
+  }
+  if (opts.modelCredentials) {
+    env.OPENAI_CODEX_TOKENS = opts.modelCredentials;
   }
 
   const envArgs = Object.entries(env).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
@@ -112,6 +125,9 @@ export async function updateLocalContainer(opts: {
   mcpConfigs: object[];
   gatewayToken: string;
   soulMd?: string;
+  modelProvider?: string;
+  modelName?: string;
+  modelCredentials?: string;
 }): Promise<{ containerId: string; containerName: string; port: number }> {
   // Recreate container with new config
   try {

@@ -32,6 +32,8 @@ export default function NewAgentPage() {
   const [telegramUserId, setTelegramUserId] = useState("");
   const [mcpConfig, setMcpConfig] = useState("");
   const [soulMd, setSoulMd] = useState(DEFAULT_SOUL);
+  const [modelProvider, setModelProvider] = useState<"anthropic" | "openai-codex">("anthropic");
+  const [codexTokens, setCodexTokens] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -50,6 +52,8 @@ export default function NewAgentPage() {
           ...(telegramUserId ? { telegramUserId } : {}),
           mcpConfig: mcpConfig || "[]",
           soulMd,
+          modelProvider,
+          ...(modelProvider === "openai-codex" && codexTokens ? { modelCredentials: codexTokens } : {}),
         }),
       });
 
@@ -131,6 +135,77 @@ export default function NewAgentPage() {
                 onChange={(e) => setTelegramUserId(e.target.value.replace(/\D/g, ""))}
               />
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Model Provider</CardTitle>
+            <CardDescription>
+              Choose which AI model powers your agent.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setModelProvider("anthropic")}
+                className={`flex-1 rounded-md border-2 p-3 text-left text-sm transition-colors ${
+                  modelProvider === "anthropic"
+                    ? "border-primary bg-primary/5"
+                    : "border-input hover:border-primary/50"
+                }`}
+              >
+                <div className="font-medium">Anthropic Claude</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Uses the platform&apos;s shared API key. No setup needed.
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setModelProvider("openai-codex")}
+                className={`flex-1 rounded-md border-2 p-3 text-left text-sm transition-colors ${
+                  modelProvider === "openai-codex"
+                    ? "border-primary bg-primary/5"
+                    : "border-input hover:border-primary/50"
+                }`}
+              >
+                <div className="font-medium">OpenAI (ChatGPT subscription)</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Uses your ChatGPT Plus/Pro subscription via Codex OAuth.
+                </div>
+              </button>
+            </div>
+            {modelProvider === "openai-codex" && (
+              <div className="space-y-2">
+                <Label htmlFor="codex-tokens">Codex OAuth Tokens</Label>
+                <CardDescription className="text-xs">
+                  Run <code className="bg-muted px-1 rounded">codex login</code> then
+                  paste the contents of <code className="bg-muted px-1 rounded">~/.codex/auth.json</code>.
+                  Only the tokens are stored.
+                </CardDescription>
+                <textarea
+                  id="codex-tokens"
+                  className="flex min-h-[100px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
+                  placeholder='{ "tokens": { "access_token": "...", "id_token": "...", "refresh_token": "..." } }'
+                  value={codexTokens}
+                  onChange={(e) => {
+                    // If user pastes the full auth.json, extract just the tokens
+                    const val = e.target.value;
+                    try {
+                      const parsed = JSON.parse(val);
+                      if (parsed.tokens) {
+                        setCodexTokens(JSON.stringify(parsed.tokens));
+                        return;
+                      }
+                    } catch {
+                      // not valid JSON yet, store raw
+                    }
+                    setCodexTokens(val);
+                  }}
+                />
+              </div>
+            )}
           </CardContent>
         </Card>
 

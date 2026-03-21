@@ -16,6 +16,9 @@ export interface ProvisionOpts {
   mcpConfigs: object[];
   gatewayToken: string;
   soulMd?: string;
+  modelProvider?: string;
+  modelName?: string;
+  modelCredentials?: string;
 }
 
 export async function provision(opts: ProvisionOpts): Promise<ProvisionResult> {

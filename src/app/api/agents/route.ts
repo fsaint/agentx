@@ -11,6 +11,9 @@ const createSchema = z.object({
   telegramUserId: z.string().regex(/^\d+$/).optional().or(z.literal("")),
   mcpConfig: z.string().default("[]"),
   soulMd: z.string().optional(),
+  modelProvider: z.enum(["anthropic", "openai-codex"]).default("anthropic"),
+  modelName: z.string().optional(),
+  modelCredentials: z.string().optional(),
 });
 
 // GET /api/agents — list user's agents
@@ -44,7 +47,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { name, telegramToken, telegramUserId, mcpConfig, soulMd } = body.data;
+  const { name, telegramToken, telegramUserId, mcpConfig, soulMd, modelProvider, modelName, modelCredentials } = body.data;
 
   // Validate telegram token
   try {
@@ -88,6 +91,9 @@ export async function POST(req: NextRequest) {
       telegramUserId: telegramUserId && telegramUserId.length > 0 ? telegramUserId : null,
       gatewayToken,
       soulMd: soulMd || null,
+      modelProvider,
+      modelName: modelName || (modelProvider === "openai-codex" ? "gpt-5.4" : "claude-sonnet-4-5"),
+      modelCredentials: modelCredentials || null,
       status: "pending",
       mcpConfigs: {
         create: mcpConfigs.map((c) => ({
@@ -107,6 +113,9 @@ export async function POST(req: NextRequest) {
       mcpConfigs,
       gatewayToken,
       soulMd,
+      modelProvider,
+      modelName: modelName || (modelProvider === "openai-codex" ? "gpt-5.4" : "claude-sonnet-4-5"),
+      modelCredentials: modelCredentials || undefined,
     });
 
     const updated = await prisma.instance.update({

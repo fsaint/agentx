@@ -71,6 +71,9 @@ interface CreateMachineOpts {
   mcpConfigs: object[];
   gatewayToken: string;
   soulMd?: string;
+  modelProvider?: string;
+  modelName?: string;
+  modelCredentials?: string;
 }
 
 export async function createMachine(opts: CreateMachineOpts) {
@@ -120,6 +123,9 @@ function buildMachineConfig(opts: CreateMachineOpts) {
       NODE_OPTIONS: "--max-old-space-size=3072 --dns-result-order=ipv4first",
       ...(opts.soulMd ? { SOUL_MD: opts.soulMd } : {}),
       ...(opts.telegramUserId ? { TELEGRAM_TRUSTED_USER: opts.telegramUserId } : {}),
+      ...(opts.modelProvider ? { MODEL_PROVIDER: opts.modelProvider } : {}),
+      ...(opts.modelName ? { MODEL_NAME: opts.modelName } : {}),
+      ...(opts.modelCredentials ? { OPENAI_CODEX_TOKENS: opts.modelCredentials } : {}),
     },
     services: [
       {

@@ -110,6 +110,9 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         mcpConfigs: agent.mcpConfigs.map((c) => c.config as object),
         gatewayToken: agent.gatewayToken || "",
         soulMd: agent.soulMd || undefined,
+        modelProvider: agent.modelProvider,
+        modelName: agent.modelName,
+        modelCredentials: agent.modelCredentials || undefined,
       });
       await prisma.instance.update({
         where: { id },
