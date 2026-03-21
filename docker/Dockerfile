@@ -19,8 +19,9 @@ RUN mkdir -p /home/node/.openclaw/plugins/openclaw-mcp-bridge && \
 RUN mkdir -p /app/dist/plugins/runtime
 COPY plugin-runtime-shim.mjs /app/dist/plugins/runtime/index.js
 
-# Copy entrypoint and workspace templates
+# Copy entrypoint, auth helper, and workspace templates
 COPY entrypoint.sh /entrypoint.sh
+COPY write-codex-auth.js /write-codex-auth.js
 COPY workspace/ /workspace-template/
 RUN chmod +x /entrypoint.sh && chown -R node:node /workspace-template
 

@@ -4,7 +4,7 @@ set -e
 CONFIG_DIR="${HOME}/.openclaw"
 WORKSPACE_DIR="${CONFIG_DIR}/workspace"
 
-mkdir -p "$CONFIG_DIR" "$WORKSPACE_DIR" "$CONFIG_DIR/agents/main/sessions"
+mkdir -p "$CONFIG_DIR" "$WORKSPACE_DIR" "$CONFIG_DIR/agents/main/sessions" "$CONFIG_DIR/agents/main/agent"
 chmod 700 "$CONFIG_DIR"
 
 # Copy workspace templates if not already present
@@ -25,6 +25,8 @@ const telegramToken = process.env.TELEGRAM_BOT_TOKEN || '';
 const trustedUser = process.env.TELEGRAM_TRUSTED_USER || '';
 const mcpConfig = JSON.parse(process.env.MCP_CONFIG || '[]');
 const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN || 'agentx-' + Math.random().toString(36).slice(2);
+const modelProvider = process.env.MODEL_PROVIDER || 'anthropic';
+const modelName = process.env.MODEL_NAME || 'claude-sonnet-4-5';
 
 // Build MCP servers object from array
 const mcpServers = {};
@@ -61,7 +63,7 @@ const config = {
     defaults: {
       workspace: '${WORKSPACE_DIR}',
       model: {
-        primary: 'anthropic/claude-sonnet-4-5',
+        primary: modelProvider + '/' + modelName,
       },
     },
   },
@@ -101,6 +103,7 @@ const config = {
 
 fs.writeFileSync('${CONFIG_DIR}/openclaw.json', JSON.stringify(config, null, 2));
 console.log('Generated openclaw.json');
+console.log('Model:', modelProvider + '/' + modelName);
 console.log('Telegram:', telegramToken ? 'configured' : 'not set');
 console.log('MCP servers:', Object.keys(mcpServers).length);
 "
@@ -150,5 +153,22 @@ if [ -n "$USAGE_CALLBACK_URL" ] && [ -n "$INSTANCE_USER_ID" ]; then
   " &
 fi
 
-# Start the gateway (skip doctor — it OOMs on small VMs)
-exec node /app/openclaw.mjs gateway --bind lan --port 18789
+# If Codex tokens provided, do a two-phase startup:
+# 1. Start gateway briefly so it creates dirs and runs doctor
+# 2. Kill it, inject auth, restart
+if [ -n "$OPENAI_CODEX_TOKENS" ]; then
+  # Phase 1: let gateway initialize (creates dirs, runs doctor)
+  node /app/openclaw.mjs gateway --bind lan --port 18789 &
+  GATEWAY_PID=$!
+  sleep 8
+  kill $GATEWAY_PID 2>/dev/null
+  wait $GATEWAY_PID 2>/dev/null
+
+  # Phase 2: inject auth into the now-existing dirs
+  node /write-codex-auth.js
+
+  # Phase 3: restart gateway — it will read the auth file this time
+  exec node /app/openclaw.mjs gateway --bind lan --port 18789
+else
+  exec node /app/openclaw.mjs gateway --bind lan --port 18789
+fi
