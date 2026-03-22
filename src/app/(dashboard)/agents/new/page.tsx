@@ -34,8 +34,63 @@ export default function NewAgentPage() {
   const [soulMd, setSoulMd] = useState(DEFAULT_SOUL);
   const [modelProvider, setModelProvider] = useState<"anthropic" | "openai-codex">("anthropic");
   const [codexTokens, setCodexTokens] = useState("");
+  const [deviceFlow, setDeviceFlow] = useState<{
+    deviceAuthId: string;
+    userCode: string;
+    interval: number;
+    verificationUrl: string;
+  } | null>(null);
+  const [deviceFlowStatus, setDeviceFlowStatus] = useState<"idle" | "waiting" | "complete" | "error">("idle");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  async function startDeviceFlow() {
+    setDeviceFlowStatus("waiting");
+    setError("");
+    try {
+      const res = await fetch("/api/auth/openai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "start" }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to start device flow");
+        setDeviceFlowStatus("error");
+        return;
+      }
+      setDeviceFlow(data);
+
+      // Start polling
+      const poll = async () => {
+        const pollRes = await fetch("/api/auth/openai", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "poll",
+            deviceAuthId: data.deviceAuthId,
+            userCode: data.userCode,
+          }),
+        });
+        const pollData = await pollRes.json();
+        if (pollData.status === "complete") {
+          setCodexTokens(JSON.stringify(pollData.tokens));
+          setDeviceFlowStatus("complete");
+          return;
+        }
+        if (pollData.status === "pending") {
+          setTimeout(poll, (data.interval || 5) * 1000);
+          return;
+        }
+        setError(pollData.error || "Authorization failed");
+        setDeviceFlowStatus("error");
+      };
+      setTimeout(poll, (data.interval || 5) * 1000);
+    } catch {
+      setError("Failed to connect to OpenAI");
+      setDeviceFlowStatus("error");
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -177,33 +232,49 @@ export default function NewAgentPage() {
               </button>
             </div>
             {modelProvider === "openai-codex" && (
-              <div className="space-y-2">
-                <Label htmlFor="codex-tokens">Codex OAuth Tokens</Label>
-                <CardDescription className="text-xs">
-                  Run <code className="bg-muted px-1 rounded">codex login</code> then
-                  paste the contents of <code className="bg-muted px-1 rounded">~/.codex/auth.json</code>.
-                  Only the tokens are stored.
-                </CardDescription>
-                <textarea
-                  id="codex-tokens"
-                  className="flex min-h-[100px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
-                  placeholder='{ "tokens": { "access_token": "...", "id_token": "...", "refresh_token": "..." } }'
-                  value={codexTokens}
-                  onChange={(e) => {
-                    // If user pastes the full auth.json, extract just the tokens
-                    const val = e.target.value;
-                    try {
-                      const parsed = JSON.parse(val);
-                      if (parsed.tokens) {
-                        setCodexTokens(JSON.stringify(parsed.tokens));
-                        return;
-                      }
-                    } catch {
-                      // not valid JSON yet, store raw
-                    }
-                    setCodexTokens(val);
-                  }}
-                />
+              <div className="space-y-3">
+                {deviceFlowStatus === "complete" ? (
+                  <div className="rounded-md border border-green-500/30 bg-green-500/5 p-3 text-sm text-green-700 dark:text-green-400">
+                    OpenAI account connected successfully.
+                  </div>
+                ) : deviceFlowStatus === "waiting" && deviceFlow ? (
+                  <div className="space-y-3">
+                    <div className="rounded-md border border-primary/30 bg-primary/5 p-4 text-center space-y-2">
+                      <p className="text-sm text-muted-foreground">
+                        Open this link and enter the code:
+                      </p>
+                      <a
+                        href={deviceFlow.verificationUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm underline font-medium text-primary"
+                      >
+                        {deviceFlow.verificationUrl}
+                      </a>
+                      <div className="font-mono text-2xl font-bold tracking-widest pt-1">
+                        {deviceFlow.userCode}
+                      </div>
+                      <p className="text-xs text-muted-foreground animate-pulse">
+                        Waiting for authorization...
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <CardDescription className="text-xs">
+                      Connect your ChatGPT Plus or Pro subscription. You&apos;ll be
+                      asked to authorize on OpenAI&apos;s website.
+                    </CardDescription>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={startDeviceFlow}
+                      disabled={deviceFlowStatus === "waiting"}
+                    >
+                      Connect OpenAI Account
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
@@ -254,7 +325,7 @@ export default function NewAgentPage() {
           >
             Cancel
           </Button>
-          <Button type="submit" disabled={loading || !telegramToken}>
+          <Button type="submit" disabled={loading || !telegramToken || (modelProvider === "openai-codex" && !codexTokens)}>
             {loading ? "Creating..." : "Create Agent"}
           </Button>
         </div>
