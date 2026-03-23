@@ -18,6 +18,7 @@ if [ -n "$SOUL_MD" ]; then
 fi
 
 # Generate openclaw.json from environment variables
+generate_config() {
 node -e "
 const fs = require('fs');
 
@@ -107,6 +108,9 @@ console.log('Model:', modelProvider + '/' + modelName);
 console.log('Telegram:', telegramToken ? 'configured' : 'not set');
 console.log('MCP servers:', Object.keys(mcpServers).length);
 "
+}
+
+generate_config
 
 # Start usage reporter in background (reports every 5 minutes)
 if [ -n "$USAGE_CALLBACK_URL" ] && [ -n "$INSTANCE_USER_ID" ]; then
@@ -164,10 +168,11 @@ if [ -n "$OPENAI_CODEX_TOKENS" ]; then
   kill $GATEWAY_PID 2>/dev/null
   wait $GATEWAY_PID 2>/dev/null
 
-  # Phase 2: inject auth into the now-existing dirs
+  # Phase 2: re-generate config (gateway init may have overwritten it) and inject auth
+  generate_config
   node /write-codex-auth.js
 
-  # Phase 3: restart gateway — it will read the auth file this time
+  # Phase 3: restart gateway — it will read the auth file and correct config this time
   exec node /app/openclaw.mjs gateway --bind lan --port 18789
 else
   exec node /app/openclaw.mjs gateway --bind lan --port 18789
